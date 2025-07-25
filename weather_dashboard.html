@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>MétéoPro - Tableau de bord météo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/timezone.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/utc.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bleu: {
+                            clair: "#E7F0FF",
+                            moyen: "#B0C4FF",
+                            fonce: "#4A6BFF",
+                        },
+                        gris: {
+                            clair: "#F8FAFC",
+                            moyen: "#E2E8F0",
+                            fonce: "#718096",
+                        },
+                        alert: {
+                            vert: "#10B981",
+                            orange: "#F59E0B",
+                            rouge: "#EF4444",
+                        },
+                    },
+                    fontFamily: {
+                        sans: ["Poppins", "sans-serif"],
+                    },
+                },
+            },
+        };
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gris-clair text-gris-fonce font-sans">
+    <div class="container mx-auto p-4">
+        <header class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl font-semibold">Bienvenue sur MétéoPro</h1>
+                <p class="text-lg">Consultez les informations météo d'aujourd'hui</p>
+            </div>
+        </header>
+
+        <!-- Barre de recherche -->
+        <div class="flex space-x-2 mb-6">
+            <input type="text" id="cityInput" placeholder="Rechercher une ville..."
+                   class="bg-white border border-gris-moyen px-4 py-2 rounded w-full text-gris-fonce">
+            <button onclick="fetchWeather()"
+                    class="bg-bleu-fonce px-4 py-2 rounded hover:bg-opacity-80 text-white">
+                Rechercher
+            </button>
+        </div>
+
+        <!-- Pays recherché -->
+        <div class="mb-4">
+            <p class="text-lg font-semibold">Pays: <span id="countryName">--</span></p>
+        </div>
+
+        <!-- Heure locale -->
+        <div class="mb-4">
+            <p class="text-lg font-semibold">Heure locale: <span id="localTime">--:--:--</span></p>
+        </div>
+
+        <!-- Notifications -->
+        <div id="notification" class="mb-4 p-4 rounded hidden"></div>
+
+        <section class="bg-white p-6 rounded-xl shadow-sm mb-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Prochaines heures</h2>
+                <div class="flex space-x-4">
+                    <button class="text-bleu-fonce" onclick="toggleFullScreen()">Plein écran</button>
+                </div>
+            </div>
+            <div class="flex justify-between items-end h-40">
+                <div class="text-center">
+                    <p class="font-semibold">Maintenant</p>
+                    <p class="font-semibold" id="currentTemp">--°C</p>
+                    <p class="text-sm" id="currentPrecip">--%</p>
+                </div>
+                <!-- Ajoutez d'autres heures ici -->
+            </div>
+            <div class="mt-4">
+                <canvas id="tempChart" height="100"></canvas>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-white p-4 rounded-xl shadow-sm">
+                <h3 class="text-lg font-semibold mb-2">Humidité</h3>
+                <div class="flex items-center space-x-2">
+                    <span class="text-3xl font-bold" id="humidity">--%</span>
+                    <span class="text-sm">Mauvais</span>
+                </div>
+                <div class="mt-2">
+                    <canvas id="humidityChart" height="100"></canvas>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-sm">
+                <h3 class="text-lg font-semibold mb-2">Vent</h3>
+                <div class="flex items-center justify-center">
+                    <div class="relative w-32 h-32">
+                        <svg class="w-full h-full" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="45" fill="none" stroke="#E2E8F0" stroke-width="10" />
+                            <circle cx="50" cy="50" r="45" fill="none" stroke="#4A6BFF" stroke-width="10" stroke-dasharray="283" stroke-dashoffset="170" transform="rotate(-90 50 50)" />
+                        </svg>
+                        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+                            <p class="text-xl font-bold" id="wind">-- km/h</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-sm">
+                <h3 class="text-lg font-semibold mb-2">Précipitations</h3>
+                <div class="flex items-center space-x-2">
+                    <span class="text-3xl font-bold" id="precipitation">-- cm</span>
+                </div>
+                <div class="mt-2">
+                    <canvas id="precipitationChart" height="100"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <footer class="mt-6 text-center text-gris-fonce">
+            <p>Créé par Houssem Cherif</p>
+        </footer>
+    </div>
+
+    <script>
+        // Extend dayjs with plugins
+        dayjs.extend(window.dayjs_plugin_timezone);
+        dayjs.extend(window.dayjs_plugin_utc);
+
+        // Variables globales pour les graphiques
+        let tempChart, humidityChart, precipitationChart;
+
+        function createOrUpdateChart(ctx, config, existingChart) {
+            if (existingChart) {
+                existingChart.data = config.data;
+                existingChart.options = config.options;
+                existingChart.update();
+                return existingChart;
+            } else {
+                return new Chart(ctx, config);
+            }
+        }
+
+        function toggleFullScreen() {
+            const chartSection = document.querySelector('section.bg-white');
+            if (!document.fullscreenElement) {
+                chartSection.requestFullscreen().catch(err => {
+                    alert(`Erreur lors du passage en mode plein écran: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function setNotification(level, message) {
+            const notificationDiv = document.getElementById("notification");
+            let color;
+            switch(level) {
+                case 'vert':
+                    color = 'bg-alert-vert';
+                    break;
+                case 'orange':
+                    color = 'bg-alert-orange';
+                    break;
+                case 'rouge':
+                    color = 'bg-alert-rouge';
+                    break;
+                default:
+                    color = 'bg-gris-moyen';
+            }
+            notificationDiv.className = `mb-4 p-4 rounded ${color}`;
+            notificationDiv.innerHTML = `<p class="text-white">${message}</p>`;
+            notificationDiv.classList.remove('hidden');
+        }
+
+        async function fetchWeather() {
+            const city = document.getElementById("cityInput").value.trim() || "Paris";
+            const apiKey = "980e5376260b4e3db7335240252507"; // Remplacez par votre clé API
+            const apiUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${encodeURIComponent(city)}&days=1&aqi=yes&alerts=yes`;
+
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error("Ville non trouvée ou problème API");
+                const data = await response.json();
+
+                // Données actuelles
+                const current = data.current;
+                const location = data.location;
+
+                document.getElementById("currentTemp").innerText = `${Math.round(current.temp_c)}°C`;
+                document.getElementById("currentPrecip").innerText = `${current.precip_mm}%`;
+                document.getElementById("humidity").innerText = `${current.humidity}%`;
+                document.getElementById("wind").innerText = `${Math.round(current.wind_kph)} km/h`;
+                document.getElementById("precipitation").innerText = `${current.precip_mm} cm`;
+
+                // Afficher le pays recherché
+                document.getElementById("countryName").innerText = location.country;
+
+                // Afficher l'heure locale
+                const localTime = dayjs().tz(location.tz_id).format("HH:mm:ss");
+                document.getElementById("localTime").innerText = localTime;
+
+                // Notifications
+                if (current.temp_c > 30) {
+                    setNotification('rouge', '⚠️ Température élevée! Restez hydraté.');
+                } else if (current.temp_c > 25) {
+                    setNotification('orange', '⚠️ Température modérée. Soyez prudent.');
+                } else {
+                    setNotification('vert', 'Température normale. Profitez de votre journée!');
+                }
+
+                // Préparer données pour graphiques
+                const forecastHours = data.forecast.forecastday[0].hour.slice(0, 24);
+                const labels = forecastHours.map(h => dayjs(h.time).format("HH:mm"));
+                const temps = forecastHours.map(h => h.temp_c);
+                const humidities = forecastHours.map(h => h.humidity);
+                const precipitations = forecastHours.map(h => h.precip_mm);
+
+                // Mise à jour graphique température
+                const tempCtx = document.getElementById("tempChart").getContext("2d");
+                tempChart = createOrUpdateChart(tempCtx, {
+                    type: "line",
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: "Température (°C)",
+                            data: temps,
+                            borderColor: temps.map(temp => temp > 30 ? '#EF4444' : temp > 25 ? '#F59E0B' : '#10B981'),
+                            backgroundColor: temps.map(temp => temp > 30 ? 'rgba(239, 68, 68, 0.2)' : temp > 25 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'),
+                            fill: true,
+                            tension: 0.4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: "#718096" } },
+                            tooltip: { enabled: true }
+                        },
+                        scales: {
+                            y: { ticks: { color: "#718096" }, beginAtZero: false },
+                            x: { ticks: { color: "#718096" } }
+                        }
+                    }
+                }, tempChart);
+
+                // Mise à jour graphique humidité
+                const humidityCtx = document.getElementById("humidityChart").getContext("2d");
+                humidityChart = createOrUpdateChart(humidityCtx, {
+                    type: "line",
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: "Humidité (%)",
+                            data: humidities,
+                            borderColor: "#10B981",
+                            backgroundColor: "#10B98144",
+                            fill: true,
+                            tension: 0.4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: "#718096" } },
+                            tooltip: { enabled: true }
+                        },
+                        scales: {
+                            y: { ticks: { color: "#718096" }, beginAtZero: false },
+                            x: { ticks: { color: "#718096" } }
+                        }
+                    }
+                }, humidityChart);
+
+                // Mise à jour graphique précipitations
+                const precipitationCtx = document.getElementById("precipitationChart").getContext("2d");
+                precipitationChart = createOrUpdateChart(precipitationCtx, {
+                    type: "bar",
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: "Précipitations (mm)",
+                            data: precipitations,
+                            backgroundColor: "#4A6BFF",
+                            borderColor: "#4A6BFF",
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: "#718096" } },
+                            tooltip: { enabled: true }
+                        },
+                        scales: {
+                            y: { ticks: { color: "#718096" }, beginAtZero: true },
+                            x: { ticks: { color: "#718096" } }
+                        }
+                    }
+                }, precipitationChart);
+            } catch (error) {
+                alert("Erreur : " + error.message);
+            }
+        }
+
+        // Chargement initial
+        fetchWeather();
+    </script>
+</body>
+</html>
