@@ -2,13 +2,14 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>MétéoPro - Tableau de bord météo</title>
+    <title>MétéoPro - Tableau de bord météo avec Chatbot</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/timezone.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/utc.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -38,72 +39,293 @@
         };
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes slideIn {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes slideOut {
+            from { transform: translateY(0); opacity: 1; }
+            to { transform: translateY(100%); opacity: 0; }
+        }
+
+        .chatbot-visible {
+            display: block;
+            animation: slideIn 0.3s ease-out forwards;
+        }
+
+        .chatbot-hidden {
+            animation: slideOut 0.3s ease-out forwards;
+            animation-fill-mode: forwards;
+        }
+
+        .chat-icon {
+            transition: transform 0.3s ease;
+        }
+
+        .chat-icon:hover {
+            transform: scale(1.1);
+        }
+
+        .chat-message {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 18px;
+            margin: 5px 0;
+            word-wrap: break-word;
+        }
+
+        .user-message {
+            background-color: #4A6BFF;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+        }
+
+        .bot-message {
+            background-color: #F1F5F9;
+            color: #1E293B;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 10px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            margin: 0 2px;
+            background-color: #94a3b8;
+            border-radius: 50%;
+            display: inline-block;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-5px); }
+        }
+
+        .weather-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .weather-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-gradient {
+            background: linear-gradient(135deg, #4A6BFF 0%, #6A5AF9 100%);
+        }
+
+        body.dark-mode {
+            background-color: #1E293B;
+            color: #F8FAFC;
+        }
+
+        body.dark-mode .bg-white {
+            background-color: #334155;
+            color: #F8FAFC;
+        }
+
+        body.dark-mode .header-gradient {
+            background: linear-gradient(135deg, #1E3A8A 0%, #312E81 100%);
+        }
+
+        body.dark-mode .text-gris-fonce {
+            color: #F8FAFC;
+        }
+
+        body.dark-mode .bg-gris-clair {
+            background-color: #1E293B;
+        }
+
+        .dark-mode-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #4A6BFF;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+    </style>
 </head>
 <body class="bg-gris-clair text-gris-fonce font-sans">
+    <label class="dark-mode-toggle switch">
+        <input type="checkbox" id="darkModeToggle">
+        <span class="slider"></span>
+    </label>
     <div class="container mx-auto p-4">
-        <header class="flex justify-between items-center mb-6">
-            <div>
-                <h1 class="text-2xl font-semibold">Bienvenue sur MétéoPro</h1>
-                <p class="text-lg">Consultez les informations météo d'aujourd'hui</p>
+        <header class="header-gradient text-white p-6 rounded-xl mb-6">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold">MétéoPro</h1>
+                    <p class="text-lg opacity-90">Tableau de bord météo intelligent</p>
+                </div>
+                <div class="bg-white/20 p-2 rounded-lg">
+                    <i class="fas fa-cloud-sun text-3xl"></i>
+                </div>
             </div>
         </header>
 
-        <!-- Barre de recherche -->
         <div class="flex space-x-2 mb-6">
             <input type="text" id="cityInput" placeholder="Rechercher une ville..."
-                   class="bg-white border border-gris-moyen px-4 py-2 rounded w-full text-gris-fonce">
+                   class="bg-white border border-gris-moyen px-4 py-3 rounded-lg w-full text-gris-fonce focus:ring-2 focus:ring-bleu-moyen shadow-sm">
             <button onclick="fetchWeather()"
-                    class="bg-bleu-fonce px-4 py-2 rounded hover:bg-opacity-80 text-white">
-                Rechercher
+                    class="bg-bleu-fonce px-5 py-3 rounded-lg hover:bg-opacity-90 text-white flex items-center shadow-md">
+                <i class="fas fa-search mr-2"></i> Rechercher
             </button>
         </div>
 
-        <!-- Pays recherché -->
-        <div class="mb-4">
-            <p class="text-lg font-semibold">Pays: <span id="countryName">--</span></p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm flex items-center">
+                <div class="mr-4">
+                    <i class="fas fa-flag text-bleu-fonce text-2xl"></i>
+                </div>
+                <div>
+                    <p class="text-sm text-gris-fonce/80">Pays</p>
+                    <p class="text-lg font-semibold" id="countryName">--</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm flex items-center">
+                <div class="mr-4">
+                    <i class="fas fa-clock text-bleu-fonce text-2xl"></i>
+                </div>
+                <div>
+                    <p class="text-sm text-gris-fonce/80">Heure locale</p>
+                    <p class="text-lg font-semibold" id="localTime">--:--:--</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm flex items-center">
+                <div class="mr-4">
+                    <i class="fas fa-temperature-high text-bleu-fonce text-2xl"></i>
+                </div>
+                <div>
+                    <p class="text-sm text-gris-fonce/80">Température actuelle</p>
+                    <p class="text-lg font-semibold" id="currentTemp">--°C</p>
+                </div>
+            </div>
         </div>
 
-        <!-- Heure locale -->
-        <div class="mb-4">
-            <p class="text-lg font-semibold">Heure locale: <span id="localTime">--:--:--</span></p>
-        </div>
-
-        <!-- Notifications -->
-        <div id="notification" class="mb-4 p-4 rounded hidden"></div>
+        <div id="notification" class="mb-6 p-4 rounded-lg hidden"></div>
 
         <section class="bg-white p-6 rounded-xl shadow-sm mb-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">Prochaines heures</h2>
                 <div class="flex space-x-4">
-                    <button class="text-bleu-fonce" onclick="toggleFullScreen()">Plein écran</button>
+                    <button class="text-bleu-fonce hover:text-bleu-fonce/80 flex items-center" onclick="toggleFullScreen()">
+                        <i class="fas fa-expand mr-1"></i> Plein écran
+                    </button>
+                    <button class="text-bleu-fonce hover:text-bleu-fonce/80 flex items-center" onclick="takeScreenshot()">
+                        <i class="fas fa-camera mr-1"></i> Capture
+                    </button>
                 </div>
-            </div>
-            <div class="flex justify-between items-end h-40">
-                <div class="text-center">
-                    <p class="font-semibold">Maintenant</p>
-                    <p class="font-semibold" id="currentTemp">--°C</p>
-                    <p class="text-sm" id="currentPrecip">--%</p>
-                </div>
-                <!-- Ajoutez d'autres heures ici -->
             </div>
             <div class="mt-4">
-                <canvas id="tempChart" height="100"></canvas>
+                <canvas id="tempChart" height="120"></canvas>
             </div>
         </section>
 
-        <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-white p-4 rounded-xl shadow-sm">
-                <h3 class="text-lg font-semibold mb-2">Humidité</h3>
-                <div class="flex items-center space-x-2">
-                    <span class="text-3xl font-bold" id="humidity">--%</span>
-                    <span class="text-sm">Mauvais</span>
+        <section class="bg-white p-6 rounded-xl shadow-sm mb-6">
+            <h2 class="text-xl font-semibold mb-4">Prévisions sur 3 jours</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-gris-clair p-4 rounded-lg" id="forecastDay1">
+                    <p class="font-semibold" id="day1Date">--</p>
+                    <p id="day1Temp">--°C</p>
+                    <p id="day1Condition">--</p>
+                    <p id="day1Precip">Précipitations: -- mm</p>
                 </div>
-                <div class="mt-2">
-                    <canvas id="humidityChart" height="100"></canvas>
+                <div class="bg-gris-clair p-4 rounded-lg" id="forecastDay2">
+                    <p class="font-semibold" id="day2Date">--</p>
+                    <p id="day2Temp">--°C</p>
+                    <p id="day2Condition">--</p>
+                    <p id="day2Precip">Précipitations: -- mm</p>
+                </div>
+                <div class="bg-gris-clair p-4 rounded-lg" id="forecastDay3">
+                    <p class="font-semibold" id="day3Date">--</p>
+                    <p id="day3Temp">--°C</p>
+                    <p id="day3Condition">--</p>
+                    <p id="day3Precip">Précipitations: -- mm</p>
                 </div>
             </div>
-            <div class="bg-white p-4 rounded-xl shadow-sm">
-                <h3 class="text-lg font-semibold mb-2">Vent</h3>
+        </section>
+
+        <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-white p-5 rounded-xl shadow-sm weather-card">
+                <div class="flex justify-between items-start mb-3">
+                    <h3 class="text-lg font-semibold">Humidité</h3>
+                    <i class="fas fa-tint text-bleu-moyen text-xl"></i>
+                </div>
+                <div class="flex items-center space-x-2 mb-3">
+                    <span class="text-3xl font-bold" id="humidity">--%</span>
+                </div>
+                <div>
+                    <canvas id="humidityChart" height="80"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm weather-card">
+                <div class="flex justify-between items-start mb-3">
+                    <h3 class="text-lg font-semibold">Vent</h3>
+                    <i class="fas fa-wind text-bleu-moyen text-xl"></i>
+                </div>
                 <div class="flex items-center justify-center">
                     <div class="relative w-32 h-32">
                         <svg class="w-full h-full" viewBox="0 0 100 100">
@@ -116,29 +338,262 @@
                     </div>
                 </div>
             </div>
-            <div class="bg-white p-4 rounded-xl shadow-sm">
-                <h3 class="text-lg font-semibold mb-2">Précipitations</h3>
-                <div class="flex items-center space-x-2">
+
+            <div class="bg-white p-5 rounded-xl shadow-sm weather-card">
+                <div class="flex justify-between items-start mb-3">
+                    <h3 class="text-lg font-semibold">Précipitations</h3>
+                    <i class="fas fa-cloud-rain text-bleu-moyen text-xl"></i>
+                </div>
+                <div class="flex items-center space-x-2 mb-3">
                     <span class="text-3xl font-bold" id="precipitation">-- cm</span>
                 </div>
-                <div class="mt-2">
-                    <canvas id="precipitationChart" height="100"></canvas>
+                <div>
+                    <canvas id="precipitationChart" height="80"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm weather-card">
+                <div class="flex justify-between items-start mb-3">
+                    <h3 class="text-lg font-semibold">Meilleur moment</h3>
+                    <i class="fas fa-walking text-bleu-moyen text-xl"></i>
+                </div>
+                <div class="flex items-center space-x-2 mb-2">
+                    <span class="text-2xl font-bold" id="bestTimeToGoOut">--</span>
+                </div>
+                <div class="text-sm text-gris-fonce">
+                    <p id="bestTimeReason">Basé sur température, précipitations et humidité</p>
+                </div>
+                <div class="mt-4 bg-bleu-clair p-3 rounded-lg">
+                    <p class="text-sm"><i class="fas fa-info-circle mr-2"></i> Moment idéal pour les activités extérieures</p>
                 </div>
             </div>
         </section>
 
-        <footer class="mt-6 text-center text-gris-fonce">
-            <p>Créé par Houssem Cherif</p>
+        <footer class="mt-8 text-center text-gris-fonce">
+            <p>Créé par Houssem Cherif | MétéoPro © 2025</p>
         </footer>
     </div>
 
+    <div id="chatIcon" class="fixed bottom-6 right-6 w-16 h-16 bg-bleu-fonce rounded-full flex items-center justify-center shadow-lg cursor-pointer chat-icon z-50">
+        <i class="fas fa-robot text-white text-2xl"></i>
+    </div>
+
+    <div id="chatbot" class="fixed bottom-0 right-6 w-full max-w-md h-0 bg-white rounded-t-xl shadow-xl overflow-hidden z-40">
+        <div class="flex flex-col h-full">
+            <div class="bg-bleu-fonce p-4 text-white flex justify-between items-center">
+                <div class="flex items-center">
+                    <i class="fas fa-robot text-xl mr-2"></i>
+                    <h3 class="text-lg font-semibold">Assistant Météo</h3>
+                </div>
+                <button id="closeChat" class="text-white hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div id="chatMessages" class="flex-grow p-4 overflow-y-auto bg-gris-clair flex flex-col">
+                <div class="bot-message chat-message">
+                    <div class="flex items-start">
+                        <div class="bg-bleu-fonce text-white rounded-full w-8 h-8 flex items-center justify-center mr-2 flex-shrink-0">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div>
+                            <p>Bonjour ! 👋 Je suis votre assistant météo. Posez-moi des questions sur la météo, les prévisions, ou demandez des conseils pour vos activités.</p>
+                            <p class="mt-2 font-semibold">Exemples de questions :</p>
+                            <ul class="list-disc pl-5 mt-1">
+                                <li>Quel temps fera-t-il demain ?</li>
+                                <li>Dois-je prendre un parapluie aujourd'hui ?</li>
+                                <li>Quelle est la meilleure heure pour une promenade ?</li>
+                                <li>Quels vêtements dois-je porter demain ?</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-3 bg-white border-t border-gris-moyen">
+                <div class="flex">
+                    <input type="text" id="userInput" placeholder="Posez votre question..." class="flex-grow p-3 border border-gris-moyen rounded-l-lg focus:outline-none focus:ring-2 focus:ring-bleu-moyen">
+                    <button id="sendMessage" class="bg-bleu-fonce text-white px-4 py-2 rounded-r-lg hover:bg-opacity-90 transition-opacity">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script>
-        // Extend dayjs with plugins
         dayjs.extend(window.dayjs_plugin_timezone);
         dayjs.extend(window.dayjs_plugin_utc);
 
-        // Variables globales pour les graphiques
         let tempChart, humidityChart, precipitationChart;
+        let weatherData = {
+            current: { temp_c: null, precip_mm: null, humidity: null, wind_kph: null, condition: null },
+            location: { city: null, country: null, tz_id: null },
+            forecast: { hours: [], days: [] },
+            bestTimeToGoOut: null,
+            bestTimeReason: null
+        };
+
+        const chatIcon = document.getElementById('chatIcon');
+        const chatbot = document.getElementById('chatbot');
+        const closeChat = document.getElementById('closeChat');
+        const chatMessages = document.getElementById('chatMessages');
+        const userInput = document.getElementById('userInput');
+        const sendMessage = document.getElementById('sendMessage');
+        let isChatOpen = false;
+
+        chatIcon.addEventListener('click', toggleChatbot);
+        closeChat.addEventListener('click', toggleChatbot);
+        sendMessage.addEventListener('click', sendUserMessage);
+        userInput.addEventListener('keypress', (e) => e.key === 'Enter' && sendUserMessage());
+
+        function toggleChatbot() {
+            isChatOpen = !isChatOpen;
+            chatbot.classList.toggle('chatbot-visible', isChatOpen);
+            chatbot.classList.toggle('chatbot-hidden', !isChatOpen);
+            chatbot.style.height = isChatOpen ? '70vh' : '0';
+            chatIcon.innerHTML = `<i class="fas ${isChatOpen ? 'fa-times' : 'fa-robot'} text-white text-2xl"></i>`;
+        }
+
+        function sendUserMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+            addMessage(message, 'user');
+            userInput.value = '';
+            showTypingIndicator();
+            setTimeout(() => {
+                removeTypingIndicator();
+                addMessage(generateResponse(message), 'bot');
+                scrollToBottom();
+            }, 1000);
+        }
+
+        function addMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('chat-message', sender === 'user' ? 'user-message' : 'bot-message');
+            messageDiv.innerHTML = sender === 'bot' ?
+                `<div class="flex items-start">
+                    <div class="bg-bleu-fonce text-white rounded-full w-8 h-8 flex items-center justify-center mr-2 flex-shrink-0">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div>${text}</div>
+                </div>` :
+                `<div class="flex items-start justify-end">
+                    <div class="ml-2">${text}</div>
+                    <div class="bg-bleu-moyen text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-user"></i>
+                    </div>
+                </div>`;
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        function showTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.classList.add('typing-indicator');
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = `
+                <div class="flex items-center">
+                    <div class="bg-bleu-fonce text-white rounded-full w-8 h-8 flex items-center justify-center mr-2 flex-shrink-0">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                </div>`;
+            chatMessages.appendChild(typingDiv);
+            scrollToBottom();
+        }
+
+        function removeTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            typingIndicator?.remove();
+        }
+
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function calculateBestTimeToGoOut(forecastHours) {
+            let bestTime = null, bestScore = -Infinity, bestReason = "";
+            forecastHours.forEach(hour => {
+                const hourTime = dayjs(hour.time);
+                const hourOfDay = hourTime.hour();
+                if (hourOfDay < 8 || hourOfDay > 20) return;
+                let score = 0;
+                if (hour.temp_c >= 18 && hour.temp_c <= 25) score += 50 - Math.abs(21.5 - hour.temp_c) * 2;
+                score -= hour.precip_mm * 20;
+                if (hour.humidity >= 40 && hour.humidity <= 70) score += 20 - Math.abs(55 - hour.humidity) / 2;
+                if (hourOfDay >= 10 && hourOfDay <= 16) score += 10;
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestTime = hourTime.format("HH:mm");
+                    const reasons = [];
+                    if (hour.temp_c >= 18 && hour.temp_c <= 25) reasons.push(`température agréable (${hour.temp_c}°C)`);
+                    if (hour.precip_mm === 0) reasons.push(`pas de précipitations`);
+                    if (hour.humidity >= 40 && hour.humidity <= 70) reasons.push(`humidité optimale (${hour.humidity}%)`);
+                    bestReason = reasons.length > 0 ? `Conditions idéales : ${reasons.join(', ')}` : `Meilleures conditions disponibles`;
+                }
+            });
+            return { time: bestTime, reason: bestReason };
+        }
+
+        function generateResponse(question) {
+            const lowerQuestion = question.toLowerCase();
+            if (!weatherData.current.temp_c) {
+                return "Je n'ai pas encore de données météo. Veuillez d'abord rechercher une ville.";
+            }
+
+            if (lowerQuestion.includes("temps") || lowerQuestion.includes("météo") || lowerQuestion.includes("actuelle")) {
+                return `Actuellement à ${weatherData.location.city}, la température est de ${Math.round(weatherData.current.temp_c)}°C avec ${weatherData.current.condition}. L'humidité est de ${weatherData.current.humidity}% et le vent souffle à ${Math.round(weatherData.current.wind_kph)} km/h.`;
+            }
+
+            if (lowerQuestion.includes("sortir") || lowerQuestion.includes("moment") || lowerQuestion.includes("meilleur")) {
+                return weatherData.bestTimeToGoOut ?
+                    `Le meilleur moment pour sortir aujourd'hui est ${weatherData.bestTimeToGoOut} car ${weatherData.bestTimeReason.toLowerCase()}.` :
+                    "Je n'ai pas encore déterminé le meilleur moment pour sortir.";
+            }
+
+            if (lowerQuestion.includes("pluie") || lowerQuestion.includes("précipitation") || lowerQuestion.includes("parapluie")) {
+                const precip = weatherData.current.precip_mm;
+                if (precip > 5) return `Précipitations importantes (${precip} mm). Prenez un parapluie et un imperméable !`;
+                if (precip > 1) return `Quelques averses possibles (${precip} mm). Un parapluie léger peut être utile.`;
+                return `Risque de pluie faible (${precip} mm). Pas besoin de parapluie.`;
+            }
+
+            if (lowerQuestion.includes("température") || lowerQuestion.includes("chaud") || lowerQuestion.includes("froid")) {
+                const temp = weatherData.current.temp_c;
+                if (temp > 30) return `Très chaud (${Math.round(temp)}°C). Hydratez-vous et évitez le soleil entre 12h et 16h.`;
+                if (temp > 25) return `Température agréable (${Math.round(temp)}°C). Protégez-vous du soleil.`;
+                if (temp > 15) return `Doux (${Math.round(temp)}°C). Une veste légère peut être utile en soirée.`;
+                return `Frais (${Math.round(temp)}°C). Habillez-vous chaudement avec manteau et écharpe.`;
+            }
+
+            if (lowerQuestion.includes("vent") || lowerQuestion.includes("venteux")) {
+                const wind = weatherData.current.wind_kph;
+                if (wind > 30) return `Vent fort (${Math.round(wind)} km/h). Soyez prudent en extérieur.`;
+                if (wind > 15) return `Brise modérée (${Math.round(wind)} km/h). Idéal pour cerf-volant ou voilier.`;
+                return `Vent faible (${Math.round(wind)} km/h). Parfait pour pique-nique ou randonnée.`;
+            }
+
+            if (lowerQuestion.includes("humidité") || lowerQuestion.includes("humide")) {
+                const humidity = weatherData.current.humidity;
+                if (humidity > 80) return `Humidité élevée (${humidity}%). Restez ventilé et hydratez-vous.`;
+                if (humidity > 50) return `Humidité modérée (${humidity}%). Confortable pour la plupart des activités.`;
+                return `Air sec (${humidity}%). Hydratez-vous et utilisez une crème hydratante.`;
+            }
+
+            if (lowerQuestion.includes("demain") || lowerQuestion.includes("prévision") || lowerQuestion.includes("jours suivants")) {
+                if (weatherData.forecast.days.length > 0) {
+                    const tomorrow = weatherData.forecast.days[0];
+                    return `Demain à ${weatherData.location.city}, prévision : ${Math.round(tomorrow.day.avgtemp_c)}°C, ${tomorrow.day.condition.text}, précipitations : ${tomorrow.day.totalprecip_mm} mm.`;
+                }
+                return "Aucune prévision disponible pour demain. Veuillez effectuer une recherche météo.";
+            }
+
+            return "Posez-moi une question sur la météo, les prévisions, ou des conseils pour vos activités !";
+        }
 
         function createOrUpdateChart(ctx, config, existingChart) {
             if (existingChart) {
@@ -146,87 +601,90 @@
                 existingChart.options = config.options;
                 existingChart.update();
                 return existingChart;
-            } else {
-                return new Chart(ctx, config);
             }
+            return new Chart(ctx, config);
         }
 
         function toggleFullScreen() {
             const chartSection = document.querySelector('section.bg-white');
-            if (!document.fullscreenElement) {
-                chartSection.requestFullscreen().catch(err => {
-                    alert(`Erreur lors du passage en mode plein écran: ${err.message}`);
-                });
-            } else {
-                document.exitFullscreen();
-            }
+            document.fullscreenElement ? document.exitFullscreen() : chartSection.requestFullscreen().catch(err => alert(`Erreur plein écran: ${err.message}`));
+        }
+
+        function takeScreenshot() {
+            html2canvas(document.body).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'meteo-screenshot.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
         }
 
         function setNotification(level, message) {
             const notificationDiv = document.getElementById("notification");
-            let color;
-            switch(level) {
-                case 'vert':
-                    color = 'bg-alert-vert';
-                    break;
-                case 'orange':
-                    color = 'bg-alert-orange';
-                    break;
-                case 'rouge':
-                    color = 'bg-alert-rouge';
-                    break;
-                default:
-                    color = 'bg-gris-moyen';
-            }
-            notificationDiv.className = `mb-4 p-4 rounded ${color}`;
-            notificationDiv.innerHTML = `<p class="text-white">${message}</p>`;
+            const colors = { vert: 'bg-alert-vert', orange: 'bg-alert-orange', rouge: 'bg-alert-rouge' };
+            notificationDiv.className = `mb-4 p-4 rounded-lg ${colors[level] || 'bg-gris-moyen'}`;
+            notificationDiv.innerHTML = `<p class="text-white flex items-center"><i class="fas fa-info-circle mr-2"></i> ${message}</p>`;
             notificationDiv.classList.remove('hidden');
         }
 
         async function fetchWeather() {
             const city = document.getElementById("cityInput").value.trim() || "Paris";
-            const apiKey = "980e5376260b4e3db7335240252507"; // Remplacez par votre clé API
-            const apiUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${encodeURIComponent(city)}&days=1&aqi=yes&alerts=yes`;
-
+            const apiKey = "980e5376260b4e3db7335240252507";
+            const apiUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${encodeURIComponent(city)}&days=4&aqi=yes&alerts=yes`;
             try {
                 const response = await fetch(apiUrl);
-                if (!response.ok) throw new Error("Ville non trouvée ou problème API");
+                if (!response.ok) throw new Error(response.status === 400 ? "Ville non trouvée" : "Erreur serveur API");
                 const data = await response.json();
-
-                // Données actuelles
                 const current = data.current;
                 const location = data.location;
+                const forecastHours = data.forecast.forecastday[0].hour.slice(0, 24);
+                const forecastDays = data.forecast.forecastday.slice(1, 4);
+                const bestTimeInfo = calculateBestTimeToGoOut(forecastHours);
+
+                weatherData = {
+                    current: {
+                        temp_c: current.temp_c,
+                        precip_mm: current.precip_mm,
+                        humidity: current.humidity,
+                        wind_kph: current.wind_kph,
+                        condition: current.condition.text
+                    },
+                    location: { city: location.name, country: location.country, tz_id: location.tz_id },
+                    forecast: { hours: forecastHours, days: forecastDays },
+                    bestTimeToGoOut: bestTimeInfo.time,
+                    bestTimeReason: bestTimeInfo.reason
+                };
 
                 document.getElementById("currentTemp").innerText = `${Math.round(current.temp_c)}°C`;
-                document.getElementById("currentPrecip").innerText = `${current.precip_mm}%`;
+                document.getElementById("countryName").innerText = location.country;
+                document.getElementById("localTime").innerText = dayjs().tz(location.tz_id).format("HH:mm:ss");
                 document.getElementById("humidity").innerText = `${current.humidity}%`;
                 document.getElementById("wind").innerText = `${Math.round(current.wind_kph)} km/h`;
                 document.getElementById("precipitation").innerText = `${current.precip_mm} cm`;
+                document.getElementById("bestTimeToGoOut").innerText = bestTimeInfo.time || "Non disponible";
+                document.getElementById("bestTimeReason").innerText = bestTimeInfo.reason || "Conditions non optimales";
 
-                // Afficher le pays recherché
-                document.getElementById("countryName").innerText = location.country;
+                forecastDays.forEach((day, index) => {
+                    const date = dayjs(day.date).format("dddd D MMMM");
+                    document.getElementById(`day${index + 1}Date`).innerText = date;
+                    document.getElementById(`day${index + 1}Temp`).innerText = `${Math.round(day.day.avgtemp_c)}°C`;
+                    document.getElementById(`day${index + 1}Condition`).innerText = day.day.condition.text;
+                    document.getElementById(`day${index + 1}Precip`).innerText = `Précipitations: ${day.day.totalprecip_mm} mm`;
+                });
 
-                // Afficher l'heure locale
-                const localTime = dayjs().tz(location.tz_id).format("HH:mm:ss");
-                document.getElementById("localTime").innerText = localTime;
-
-                // Notifications
                 if (current.temp_c > 30) {
-                    setNotification('rouge', '⚠️ Température élevée! Restez hydraté.');
+                    setNotification('rouge', '⚠️ Température élevée! Restez hydraté et évitez le soleil.');
                 } else if (current.temp_c > 25) {
-                    setNotification('orange', '⚠️ Température modérée. Soyez prudent.');
+                    setNotification('orange', '⚠️ Température modérée. Soyez prudent au soleil.');
                 } else {
                     setNotification('vert', 'Température normale. Profitez de votre journée!');
                 }
 
-                // Préparer données pour graphiques
-                const forecastHours = data.forecast.forecastday[0].hour.slice(0, 24);
                 const labels = forecastHours.map(h => dayjs(h.time).format("HH:mm"));
                 const temps = forecastHours.map(h => h.temp_c);
                 const humidities = forecastHours.map(h => h.humidity);
                 const precipitations = forecastHours.map(h => h.precip_mm);
 
-                // Mise à jour graphique température
                 const tempCtx = document.getElementById("tempChart").getContext("2d");
                 tempChart = createOrUpdateChart(tempCtx, {
                     type: "line",
@@ -244,18 +702,14 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: {
-                            legend: { labels: { color: "#718096" } },
-                            tooltip: { enabled: true }
-                        },
+                        plugins: { legend: { display: false }, tooltip: { enabled: true } },
                         scales: {
-                            y: { ticks: { color: "#718096" }, beginAtZero: false },
-                            x: { ticks: { color: "#718096" } }
+                            y: { ticks: { color: "#718096" }, beginAtZero: false, grid: { color: "rgba(0,0,0,0.05)" } },
+                            x: { ticks: { color: "#718096" }, grid: { display: false } }
                         }
                     }
                 }, tempChart);
 
-                // Mise à jour graphique humidité
                 const humidityCtx = document.getElementById("humidityChart").getContext("2d");
                 humidityChart = createOrUpdateChart(humidityCtx, {
                     type: "line",
@@ -265,7 +719,7 @@
                             label: "Humidité (%)",
                             data: humidities,
                             borderColor: "#10B981",
-                            backgroundColor: "#10B98144",
+                            backgroundColor: "rgba(16, 185, 129, 0.2)",
                             fill: true,
                             tension: 0.4,
                         }]
@@ -273,18 +727,14 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: {
-                            legend: { labels: { color: "#718096" } },
-                            tooltip: { enabled: true }
-                        },
+                        plugins: { legend: { display: false }, tooltip: { enabled: true } },
                         scales: {
-                            y: { ticks: { color: "#718096" }, beginAtZero: false },
-                            x: { ticks: { color: "#718096" } }
+                            y: { ticks: { color: "#718096" }, beginAtZero: false, grid: { color: "rgba(0,0,0,0.05)" } },
+                            x: { ticks: { color: "#718096" }, grid: { display: false } }
                         }
                     }
                 }, humidityChart);
 
-                // Mise à jour graphique précipitations
                 const precipitationCtx = document.getElementById("precipitationChart").getContext("2d");
                 precipitationChart = createOrUpdateChart(precipitationCtx, {
                     type: "bar",
@@ -301,22 +751,33 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: {
-                            legend: { labels: { color: "#718096" } },
-                            tooltip: { enabled: true }
-                        },
+                        plugins: { legend: { display: false }, tooltip: { enabled: true } },
                         scales: {
-                            y: { ticks: { color: "#718096" }, beginAtZero: true },
-                            x: { ticks: { color: "#718096" } }
+                            y: { ticks: { color: "#718096" }, beginAtZero: true, grid: { color: "rgba(0,0,0,0.05)" } },
+                            x: { ticks: { color: "#718096" }, grid: { display: false } }
                         }
                     }
                 }, precipitationChart);
             } catch (error) {
-                alert("Erreur : " + error.message);
+                setNotification('rouge', `Erreur : ${error.message}`);
             }
         }
 
-        // Chargement initial
+        function toggleDarkMode() {
+            const body = document.body;
+            body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', body.classList.contains('dark-mode'));
+        }
+
+        function checkTimeAndToggleDarkMode() {
+            const isNight = new Date().getHours() < 6 || new Date().getHours() >= 18;
+            const isDarkMode = localStorage.getItem('darkMode') === 'true' || isNight;
+            document.body.classList.toggle('dark-mode', isDarkMode);
+            document.getElementById('darkModeToggle').checked = isDarkMode;
+        }
+
+        document.getElementById('darkModeToggle').addEventListener('change', toggleDarkMode);
+        checkTimeAndToggleDarkMode();
         fetchWeather();
     </script>
 </body>
